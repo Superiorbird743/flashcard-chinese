@@ -1,15 +1,21 @@
-<!DOCTYPE html><html lang="vi">
+<!DOCTYPE html>
+<html lang="vi">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Flashcard Tiếng Trung</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 text-gray-800">
-  <div id="app" class="min-h-screen flex items-center justify-center p-4">Đang tải dữ liệu...</div>  <script type="module">
+<body class="bg-gray-50 text-gray-800">
+  <div id="app" class="min-h-screen flex items-center justify-center p-4">
+    Đang tải dữ liệu...
+  </div>
+
+  <script type="module">
     const app = document.getElementById("app");
     let fullData = [];
     let sessions = [];
+    let currentSession = null;
 
     const local = {
       save: (key, data) => localStorage.setItem(key, JSON.stringify(data)),
@@ -17,41 +23,113 @@
     };
 
     const views = {
-      menu() {
+      home() {
         app.innerHTML = `
-          <div class="max-w-md w-full space-y-4">
-            <h2 class="text-2xl font-bold text-center">Chọn buổi học</h2>
-            ${sessions.map((session, i) => {
-              const learned = local.load("learnedWords") || [];
-              const learnedCount = session.filter(w =>
-                learned.some(l => l.traditional === w.traditional)
-              ).length;
-              const color = learnedCount === session.length
-                ? 'bg-green-100 border-green-500 text-green-800'
-                : 'bg-red-100 border-red-500 text-red-800';
-              return `<button class="w-full border p-3 rounded shadow ${color}" onclick="startSession(${i})">
-                Buổi ${i + 1} - ${learnedCount}/${session.length} từ đã thuộc
-              </button>`;
-            }).join("")}
+          <div class="max-w-md mx-auto space-y-6">
+            <h1 class="text-3xl font-bold text-center">📚 Flashcard Tiếng Trung</h1>
+            <button onclick="views.menu()" 
+              class="w-full bg-green-500 text-white px-6 py-3 rounded-lg shadow hover:bg-green-600 transition">
+              🎯 Học từ theo buổi
+            </button>
+            <button onclick="views.reviewMenu()" 
+              class="w-full bg-blue-500 text-white px-6 py-3 rounded-lg shadow hover:bg-blue-600 transition">
+              🔁 Ôn lại bằng flashcard
+            </button>
           </div>
         `;
+      },
+
+      menu() {
+        const progress = local.load("progress") || {};
+        app.innerHTML = `
+          <div class="max-w-md mx-auto space-y-4">
+            <h2 class="text-3xl font-bold text-center mb-6">📚 Chọn buổi học</h2>
+            <div class="space-y-3">
+              ${sessions.map((session, i) => {
+                const buoi = progress[i+1] || [];
+                const learnedCount = buoi.length;
+                const isDone = learnedCount === session.length;
+                return `
+                  <button 
+                    class="w-full rounded-lg shadow p-4 text-left transition transform hover:scale-105
+                           ${isDone 
+                              ? 'bg-green-100 text-green-700 border border-green-400' 
+                              : 'bg-red-100 text-red-700 border border-red-400'}"
+                    onclick="startSession(${i})">
+                    <div class="font-semibold">Buổi ${i + 1}</div>
+                    <div class="text-sm">${learnedCount}/${session.length} từ đã thuộc</div>
+                  </button>`;
+              }).join("")}
+            </div>
+            <button onclick="views.home()" 
+              class="w-full mt-4 bg-gray-300 px-4 py-2 rounded hover:bg-gray-400">⬅ Quay lại</button>
+          </div>
+        `;
+      },
+
+      reviewMenu() {
+        const progress = local.load("progress") || {};
+        app.innerHTML = `
+          <div class="max-w-md mx-auto space-y-4">
+            <h2 class="text-2xl font-bold text-center">🔁 Chọn buổi để ôn tập</h2>
+            <form id="reviewForm" class="space-y-2">
+              ${sessions.map((session, i) => `
+                <label class="flex items-center space-x-2">
+                  <input type="checkbox" name="buoi" value="${i+1}" class="w-4 h-4">
+                  <span>Buổi ${i+1} (${(progress[i+1]||[]).length}/${session.length} từ)</span>
+                </label>
+              `).join("")}
+              <button type="submit" 
+                class="w-full bg-blue-500 text-white px-4 py-2 rounded mt-4 hover:bg-blue-600">
+                Bắt đầu ôn tập
+              </button>
+              <button type="button" onclick="views.home()" 
+                class="w-full bg-gray-300 text-black px-4 py-2 rounded mt-2 hover:bg-gray-400">
+                ⬅ Quay lại
+              </button>
+            </form>
+          </div>
+        `;
+        document.getElementById("reviewForm").onsubmit = (e) => {
+          e.preventDefault();
+          const checked = Array.from(document.querySelectorAll("input[name='buoi']:checked"))
+            .map(cb => parseInt(cb.value));
+          if (!checked.length) return alert("Chọn ít nhất 1 buổi!");
+          let words = [];
+          checked.forEach(b => {
+            const progress = local.load("progress") || {};
+            words = words.concat(progress[b] || []);
+          });
+          if (!words.length) return alert("Chưa có từ nào trong buổi đã chọn!");
+          // ✅ trộn ngẫu nhiên
+          words = words.sort(() => Math.random() - 0.5);
+          startReview(words);
+        };
       }
     };
+    window.views = views;
 
     window.startSession = (index) => {
+      currentSession = index + 1;
       const cards = sessions[index];
       let i = 0;
       let toReview = [...cards];
-      const learned = local.load("learnedWords") || [];
 
       renderCard();
 
       function renderCard() {
         if (i >= toReview.length) {
+          let progress = local.load("progress") || {};
+          progress[currentSession] = sessions[currentSession-1];
+          local.save("progress", progress);
+
           app.innerHTML = `
-            <div class="text-center space-y-4">
-              <h2 class="text-xl font-bold">✅ Đã hoàn thành buổi học!</h2>
-              <button onclick="views.menu()" class="bg-green-500 text-white px-4 py-2 rounded">Quay lại</button>
+            <div class="text-center space-y-6">
+              <h2 class="text-2xl font-bold">✅ Bạn đã hoàn thành buổi ${currentSession}!</h2>
+              <button onclick="views.menu()" 
+                class="bg-green-500 text-white px-6 py-3 rounded-lg shadow hover:bg-green-600 transition">
+                Quay lại Menu
+              </button>
             </div>
           `;
           return;
@@ -59,15 +137,15 @@
 
         const w = toReview[i];
         app.innerHTML = `
-          <div class="max-w-md w-full">
-            <div class="bg-white rounded-xl shadow p-10 text-center text-4xl mb-6 select-none">
-              ${w.traditional}
-              <div class="text-xl mt-2 text-gray-600">${w.pinyin}</div>
-              <div class="text-base mt-1">${w.meaning}</div>
+          <div class="max-w-md mx-auto space-y-8">
+            <div class="bg-white rounded-2xl shadow-lg p-10 text-center select-none">
+              <div class="text-5xl font-bold">${w.traditional}</div>
+              <div class="text-xl mt-3 text-gray-600">${w.pinyin}</div>
+              <div class="text-lg mt-1">${w.meaning}</div>
             </div>
-            <div class="flex justify-between">
-              <button class="bg-red-400 text-white px-4 py-2 rounded w-1/2 mr-2" onclick="mark(false)">Chưa thuộc 👎</button>
-              <button class="bg-green-500 text-white px-4 py-2 rounded w-1/2 ml-2" onclick="mark(true)">Đã thuộc 👍</button>
+            <div class="flex justify-between gap-4">
+              <button class="bg-red-400 text-white px-4 py-3 rounded-lg w-1/2 hover:bg-red-500 transition" onclick="mark(false)">Chưa thuộc 👎</button>
+              <button class="bg-green-500 text-white px-4 py-3 rounded-lg w-1/2 hover:bg-green-600 transition" onclick="mark(true)">Đã thuộc 👍</button>
             </div>
             <p class="mt-4 text-center text-sm text-gray-500">Thẻ ${i + 1} / ${toReview.length}</p>
           </div>
@@ -77,10 +155,12 @@
       window.mark = (known) => {
         const w = toReview[i];
         if (known) {
-          const existing = local.load("learnedWords") || [];
-          if (!existing.some(x => x.traditional === w.traditional)) {
-            existing.push(w);
-            local.save("learnedWords", existing);
+          let progress = local.load("progress") || {};
+          let buoi = progress[currentSession] || [];
+          if (!buoi.some(x => x.traditional === w.traditional)) {
+            buoi.push(w);
+            progress[currentSession] = buoi;
+            local.save("progress", progress);
           }
         } else {
           toReview.push(w);
@@ -90,24 +170,73 @@
       };
     };
 
+    window.startReview = (words) => {
+      let i = 0;
+      function renderCard() {
+        if (i >= words.length) {
+          app.innerHTML = `
+            <div class="text-center space-y-6">
+              <h2 class="text-2xl font-bold">🎉 Hoàn thành ôn tập!</h2>
+              <button onclick="views.home()" 
+                class="bg-green-500 text-white px-6 py-3 rounded-lg shadow hover:bg-green-600">
+                Quay lại Trang chủ
+              </button>
+            </div>
+          `;
+          return;
+        }
+        const w = words[i];
+        app.innerHTML = `
+          <div class="max-w-md mx-auto space-y-8">
+            <div class="bg-white rounded-2xl shadow-lg p-10 text-center select-none">
+              <div class="text-5xl font-bold">${w.traditional}</div>
+              <div class="text-xl mt-3 text-gray-600">${w.pinyin}</div>
+              <div class="text-lg mt-1">${w.meaning}</div>
+            </div>
+            <div class="flex justify-between gap-4">
+              <button class="bg-red-400 text-white px-4 py-3 rounded-lg w-1/2 hover:bg-red-500 transition" onclick="next(false)">Sai 👎</button>
+              <button class="bg-green-500 text-white px-4 py-3 rounded-lg w-1/2 hover:bg-green-600 transition" onclick="next(true)">Đúng 👍</button>
+            </div>
+            <p class="mt-4 text-center text-sm text-gray-500">Thẻ ${i+1}/${words.length}</p>
+          </div>
+        `;
+      }
+      window.next = () => { i++; renderCard(); };
+      renderCard();
+    };
+
+    // 📦 Load JSON
     fetch("data.json")
       .then(res => {
         if (!res.ok) throw new Error("Không tìm thấy file data.json");
         return res.json();
       })
       .then(data => {
-        fullData = data;
+        fullData = data.map(item => {
+          const hanzi = Object.keys(item)[0];
+          return {
+            traditional: hanzi,
+            pinyin: item["ā"] || "",
+            meaning: item["a, à, á"] || ""
+          };
+        });
+
         const sessionSize = 10;
         const totalSessions = Math.ceil(fullData.length / sessionSize);
+        sessions = [];
         for (let i = 0; i < totalSessions; i++) {
           const start = i * sessionSize;
           const chunk = fullData.slice(start, start + sessionSize);
           if (chunk.length > 0) sessions.push(chunk);
         }
-        views.menu();
+
+        views.home();
       })
       .catch(err => {
-        app.innerHTML = `<div class="text-center text-red-600 font-bold">🚫 Lỗi khi tải dữ liệu: ${err.message}</div>`;
+        app.innerHTML = `<div class="text-center text-red-600 font-bold">
+          🚫 Lỗi khi tải dữ liệu: ${err.message}
+        </div>`;
       });
-  </script></body>
+  </script>
+</body>
 </html>
