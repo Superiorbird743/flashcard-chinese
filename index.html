@@ -1,0 +1,113 @@
+<!DOCTYPE html><html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flashcard Tiếng Trung</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <div id="app" class="min-h-screen flex items-center justify-center p-4">Đang tải dữ liệu...</div>  <script type="module">
+    const app = document.getElementById("app");
+    let fullData = [];
+    let sessions = [];
+
+    const local = {
+      save: (key, data) => localStorage.setItem(key, JSON.stringify(data)),
+      load: (key) => JSON.parse(localStorage.getItem(key) || "null")
+    };
+
+    const views = {
+      menu() {
+        app.innerHTML = `
+          <div class="max-w-md w-full space-y-4">
+            <h2 class="text-2xl font-bold text-center">Chọn buổi học</h2>
+            ${sessions.map((session, i) => {
+              const learned = local.load("learnedWords") || [];
+              const learnedCount = session.filter(w =>
+                learned.some(l => l.traditional === w.traditional)
+              ).length;
+              const color = learnedCount === session.length
+                ? 'bg-green-100 border-green-500 text-green-800'
+                : 'bg-red-100 border-red-500 text-red-800';
+              return `<button class="w-full border p-3 rounded shadow ${color}" onclick="startSession(${i})">
+                Buổi ${i + 1} - ${learnedCount}/${session.length} từ đã thuộc
+              </button>`;
+            }).join("")}
+          </div>
+        `;
+      }
+    };
+
+    window.startSession = (index) => {
+      const cards = sessions[index];
+      let i = 0;
+      let toReview = [...cards];
+      const learned = local.load("learnedWords") || [];
+
+      renderCard();
+
+      function renderCard() {
+        if (i >= toReview.length) {
+          app.innerHTML = `
+            <div class="text-center space-y-4">
+              <h2 class="text-xl font-bold">✅ Đã hoàn thành buổi học!</h2>
+              <button onclick="views.menu()" class="bg-green-500 text-white px-4 py-2 rounded">Quay lại</button>
+            </div>
+          `;
+          return;
+        }
+
+        const w = toReview[i];
+        app.innerHTML = `
+          <div class="max-w-md w-full">
+            <div class="bg-white rounded-xl shadow p-10 text-center text-4xl mb-6 select-none">
+              ${w.traditional}
+              <div class="text-xl mt-2 text-gray-600">${w.pinyin}</div>
+              <div class="text-base mt-1">${w.meaning}</div>
+            </div>
+            <div class="flex justify-between">
+              <button class="bg-red-400 text-white px-4 py-2 rounded w-1/2 mr-2" onclick="mark(false)">Chưa thuộc 👎</button>
+              <button class="bg-green-500 text-white px-4 py-2 rounded w-1/2 ml-2" onclick="mark(true)">Đã thuộc 👍</button>
+            </div>
+            <p class="mt-4 text-center text-sm text-gray-500">Thẻ ${i + 1} / ${toReview.length}</p>
+          </div>
+        `;
+      }
+
+      window.mark = (known) => {
+        const w = toReview[i];
+        if (known) {
+          const existing = local.load("learnedWords") || [];
+          if (!existing.some(x => x.traditional === w.traditional)) {
+            existing.push(w);
+            local.save("learnedWords", existing);
+          }
+        } else {
+          toReview.push(w);
+        }
+        i++;
+        renderCard();
+      };
+    };
+
+    fetch("data.json")
+      .then(res => {
+        if (!res.ok) throw new Error("Không tìm thấy file data.json");
+        return res.json();
+      })
+      .then(data => {
+        fullData = data;
+        const sessionSize = 10;
+        const totalSessions = Math.ceil(fullData.length / sessionSize);
+        for (let i = 0; i < totalSessions; i++) {
+          const start = i * sessionSize;
+          const chunk = fullData.slice(start, start + sessionSize);
+          if (chunk.length > 0) sessions.push(chunk);
+        }
+        views.menu();
+      })
+      .catch(err => {
+        app.innerHTML = `<div class="text-center text-red-600 font-bold">🚫 Lỗi khi tải dữ liệu: ${err.message}</div>`;
+      });
+  </script></body>
+</html>
